@@ -1,0 +1,611 @@
+const mongoose = require('mongoose');
+const shortid = require('shortid');
+const time = require('./../libs/timeLib');
+const response = require('./../libs/responseLib')
+const logger = require('./../libs/loggerLib');
+const validateInput = require('../libs/paramsValidationLib')
+const check = require('../libs/checkLib')
+const passwordLib = require('./../libs/generatePasswordLib');
+
+const token = require('../libs/tokenLib');
+const authModel = mongoose.model('Auth');
+
+/* Models */
+const UserModel = mongoose.model('User')
+
+
+let getAllUser = (req, res) => {
+    UserModel.find()
+        .select('-__v -_id')
+        .lean()
+        .exec((err, result) => {
+            if (err) {
+                console.log(err)
+                logger.error(err.message, 'User Controller: getAllUser', 10)
+                let apiResponse = response.generate(true, 'Failed To Find User Details', 500, null)
+                res.send(apiResponse)
+            }
+            else if (check.isEmpty(result)) {
+                logger.error('null', 'User Controller: getAllUser', 10)
+                let apiResponse = response.generate(true, 'No user found', 500, null)
+                res.send(apiResponse)
+            }
+            else {
+                let apiResponse = response.generate('false', 'All Details', 200, result)
+                res.send(apiResponse);
+            }
+        })
+}
+
+let getSingleUser = (req, res) => {
+    UserModel.findOne({ 'userId': req.params.userId })
+        .select('-password -__v -_id')
+        .lean()
+        .exec((err, result) => {
+            if (err) {
+                console.log(err)
+                logger.error(err.message, 'User Controller: getSingleUser', 10)
+                let apiResponse = response.generate(true, 'Failed To Find User Details', 500, null)
+                res.send(apiResponse)
+            }
+            else if (check.isEmpty(result)) {
+                logger.error(err.message, 'User Controller: getSingleUser', 10)
+                let apiResponse = response.generate(true, 'No user found', 500, null)
+                res.send(apiResponse)
+            }
+            else {
+                let apiResponse = response.generate('false', 'All getSingleUser', 200, result)
+                res.send(apiResponse);
+            }
+        })
+}
+
+
+let deleteUser = (req, res) => {
+    UserModel.remove({ 'userId': req.params.userId })
+
+        .exec((err, result) => {
+            if (err) {
+                console.log(err)
+                logger.error(err.message, 'User Controller: deleteUser', 10)
+                let apiResponse = response.generate(true, 'Failed To Find User Details', 500, null)
+                res.send(apiResponse)
+            }
+            else if (check.isEmpty(result)) {
+                logger.error(err.message, 'User Controller: deleteUser', 10)
+                let apiResponse = response.generate(true, 'No user found', 500, null)
+                res.send(apiResponse)
+            }
+            else {
+                let apiResponse = response.generate('false', 'All deleteUser', 200, result)
+                res.send(apiResponse);
+            }
+        })
+}
+
+let edituser = (req, res) => {
+
+    let options = req.body
+    UserModel.update({ 'userId': req.params.userId }, options, { multi: true })
+
+        .exec((err, result) => {
+            if (err) {
+                console.log(err)
+                logger.error(err.message, 'User Controller: editUser', 10)
+                let apiResponse = response.generate(true, 'Failed To Find User Details', 500, null)
+                res.send(apiResponse)
+            }
+            else if (check.isEmpty(result)) {
+                logger.error(err.message, 'User Controller: editUser', 10)
+                let apiResponse = response.generate(true, 'No user found', 500, null)
+                res.send(apiResponse)
+            }
+            else {
+                let apiResponse = response.generate('false', ' editUser', 200, result)
+                res.send(apiResponse);
+            }
+        })
+}
+
+// start user signup function 
+
+let signUpFunction = (req, res) => {
+
+    let validateUserInput = () => { 
+        return new Promise((resolve, reject) => {
+            if (req.body.email) {
+                if (!validateInput.Email(req.body.email)) {
+                    let apiResponse = response.generate(true, 'Email does not meet Criteria', 400, null)
+                    reject(apiResponse);
+                }
+                else if (check.isEmpty(req.body.password)) {
+                    let apiResponse = response.generate(true, 'Password is missing', 400, null)
+                    reject(apiResponse);
+                }
+                else {
+                    resolve(req);
+                }
+            }
+            else {
+                logger.error('Field Missing During User Creation', 'userController: createUser()', 5)
+                let apiResponse = response.generate(true, 'One or More Parameter(s) is missing', 400, null)
+                reject(apiResponse);
+            }
+        })
+    }//end validation
+
+ 
+    let createUser = () => {
+
+        return new Promise((resolve, reject) => {
+            UserModel.findOne({ email: req.body.email })
+                .exec((err, retrievedUserDetails) => {
+                    if (err) {
+                        logger.error(err.message, 'userController: createUser', 10)
+                        let apiResponse = response.generate(true, 'Failed To Create User', 500, null)
+                        reject(apiResponse)
+                    } else if (check.isEmpty(retrievedUserDetails)) {
+                        console.log(req.body);
+                        let newUser = new UserModel({
+                            userId: shortid.generate(),
+                            firstName: req.body.firstName,
+                            lastName: req.body.lastName || '',
+                            email: req.body.email.toLowerCase(),
+                            mobileNumber: req.body.mobileNumber,
+                            password: passwordLib.hashPassword(req.body.password),
+                            createdOn: time.now()
+                        })
+                        newUser.save((err, result) => {
+                            if (err) {
+                                console.log(err)
+                                logger.error(err.message, 'userController: createUser', 10)
+                                let apiResponse = response.generate(true, 'Failed to create new User', 500, null)
+                                reject(apiResponse)
+                            } else {
+                                let newObj = result.toObject();
+                                resolve(newObj);
+                            }
+                        })
+                    }
+                    else {
+                        logger.error('', 'userController: createUser', 10)
+                        let apiResponse = response.generate(true, 'User already exists', 403, null)
+                        reject(apiResponse)
+                    }
+                })
+        })
+    }//end create user
+
+    validateUserInput(req, res)
+        .then(createUser)
+        .then((resolve) => {
+            delete resolve.password;
+            let apiResponse = response.generate(false, 'User created', 200, resolve)
+            res.send(apiResponse)
+        })
+        .catch((err) => {
+            console.log(err);
+            res.send(err);
+        })
+
+
+
+}// end user signup function 
+
+// start of login function 
+let loginFunction = (req, res) => {
+
+
+
+    let findUser = () => {
+        console.log('Find');
+        return new Promise((resolve, reject) => {
+            if (req.body.email) {
+                console.log('Email present');
+                console.log(req.body)
+                UserModel.findOne({ email: req.body.email }, (err, userDetails) => {
+                    if (err) {
+                        console.log(err)
+                        logger.error('Failed To Retrieve User Data', 'userController: findUser()', 10)
+                        /* generate the error message and the api response message here */
+                        let apiResponse = response.generate(true, 'Failed To Find User Details', 500, null)
+                        reject(apiResponse)
+                    }
+                    if (check.isEmpty(userDetails)) {
+                        /* generate the response and the console error message here */
+                        logger.error('No User Found', 'userController: findUser()', 7)
+                        let apiResponse = response.generate(true, 'No User Details Found', 404, null)
+                        reject(apiResponse)
+                    }
+                    else {
+                        logger.info('User Found', 'userController: findUser()', 10)
+                        resolve(userDetails);
+
+                    }
+                })
+            }
+            else {
+                logger.error('No Email Found', 'userController: findUser()', 7)
+                let apiResponse = response.generate(true, 'No Email Details Found', 404, null)
+                reject(apiResponse)
+            }
+        })
+    }//end Find user
+
+    let validatePassword = (retrievedUserDetails) => {
+        console.log('Validating Password');
+        return new Promise((resolve, reject) => {
+            passwordLib.comparePassword(req.body.password, retrievedUserDetails.password, (err, isMatch) => {
+                console.log(req.body.password+ retrievedUserDetails.password)
+                if (err) {
+                    console.log(err)
+                    logger.error(err.message, 'userController: validatePassword()', 10)
+                    let apiResponse = response.generate(true, 'Login Failed', 500, null)
+                    reject(apiResponse)
+                }
+                else if (isMatch) {
+                    let retrievedUserDetailsObj = retrievedUserDetails.toObject();
+                    delete retrievedUserDetailsObj.password
+                    delete retrievedUserDetailsObj.__v
+                    delete retrievedUserDetailsObj._id
+                    delete retrievedUserDetailsObj.createdOn
+                    delete retrievedUserDetailsObj.modifiedOn
+                    resolve(retrievedUserDetailsObj);
+                }
+                else {
+                    logger.info('Login Failed Due To Invalid Password', 'userController: validatePassword()', 10)
+                    let apiResponse = response.generate(true, 'Wrong Password.Login Failed', 400, null)
+                    reject(apiResponse)
+                }
+            })
+        })
+    }//end validate password
+
+
+    let generateToken = (userDetails) => {
+        console.log("Generating Token");
+        return new Promise((resolve, reject) => {
+            token.generateToken(userDetails, (err, tokenDetails) => {
+                if (err) {
+                    console.log('Error');
+                    let apiResponse = response.generate(true, 'Failed To Generate Token', 500, null)
+                    reject(apiResponse)
+
+                }
+                else {
+                    tokenDetails.userId = userDetails.userId
+                    tokenDetails.userDetails = userDetails
+                    resolve(tokenDetails)
+                }
+            })
+        })
+
+
+    }//end generateToken
+
+    let saveToken = (tokenDetails) => {
+
+        console.log("Save Token");
+        return new Promise((resolve, reject) => {
+            authModel.findOne({ userId: tokenDetails.userId }, (err, retrievedTokenDetails) => {
+                if (err) {
+                    console.log(err.message, 'userController: saveToken', 10)
+                    let apiResponse = response.generate(true, 'Failed To Generate Token', 500, null)
+                    reject(apiResponse)
+                }
+                else if (check.isEmpty(retrievedTokenDetails)) {
+                    let newAuthToken = new authModel({
+                        userId: tokenDetails.userId,
+                        authToken: tokenDetails.token,
+                        tokenSecret: tokenDetails.tokenSecret,
+                        tokenGenerationTime: time.now()
+                    })
+                    newAuthToken.save((err, newTokenDetails) => {
+                        if (err) {
+                            logger.error(err.message, 'userController: saveToken', 10)
+                            let apiResponse = response.generate(true, 'Failed To Generate Token', 500, null)
+                            reject(apiResponse)
+                        }
+                        else {
+                            let responseBody={
+                                authToken:newTokenDetails.authToken,
+                                userDetails:tokenDetails.userDetails
+                            }
+                            resolve(responseBody)
+                        }
+                    })
+                }
+
+                else{
+                    retrievedTokenDetails.authToken= tokenDetails.token,
+                    retrievedTokenDetails.tokenSecret= tokenDetails.tokenSecret,
+                    retrievedTokenDetails.tokenGenerationTime= time.now()
+                    retrievedTokenDetails.save((err, newTokenDetails) => {
+                        if (err) {
+                            logger.error(err.message, 'userController: saveToken', 10)
+                            let apiResponse = response.generate(true, 'Failed To Generate Token', 500, null)
+                            reject(apiResponse)
+                        }
+                        else {
+                            let responseBody={
+                                authToken:newTokenDetails.authToken,
+                                userDetails:tokenDetails.userDetails
+                            }
+                            resolve(responseBody)
+                        }
+                    })
+
+                }
+            })
+        })
+
+    }//emd saveToken
+
+
+    findUser(req,res)
+    .then(validatePassword)
+    .then(generateToken)
+    .then(saveToken)
+    .then((resolve)=>{
+        let apiResponse = response.generate(false, 'Login Successful', 200, resolve)
+            
+            res.send(apiResponse)
+    })
+    .catch((err)=>{
+        console.log(err);
+            res.status(err.status)
+            res.send(err);
+    })
+}
+
+
+// end of the login function 
+
+
+let logout = (req, res) => {
+
+authModel.remove({userId:req.params.userId},(err,result)=>{
+    if (err) {
+        console.log(err)
+        logger.error(err.message, 'user Controller: logout', 10)
+        let apiResponse = response.generate(true, `error occurred: ${err.message}`, 500, null)
+        res.send(apiResponse)
+    } else if (check.isEmpty(result)) {
+        let apiResponse = response.generate(true, 'Already Logged Out or Invalid UserId', 404, null)
+        res.send(apiResponse)
+    } else {
+        let apiResponse = response.generate(false, 'Logged Out Successfully', 200, null)
+        res.send(apiResponse)
+    }
+
+});
+
+
+} // end of the logout function.
+
+
+module.exports = {
+    getAllUser: getAllUser,
+    getSingleUser: getSingleUser,
+    deleteUser: deleteUser,
+    edituser: edituser,
+    signUpFunction: signUpFunction,
+    loginFunction: loginFunction,
+    logout: logout
+
+}// end exports
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const socketio = require('socket.io');
+const mongoose = require('mongoose');
+const shortid = require('shortid');
+const logger = require('./loggerLib');
+const events = require('events');
+const eventEmitter = new events.EventEmitter();
+
+const tokenLib = require('./tokenLib');
+const check = require('./checkLib');
+const reponse = require('./responseLib');
+const ChatModel = mongoose.model('Chat');
+
+const redisLib= require('./redisLib');
+
+let setServer = (server) => {
+    let allOnlineUsers = [];
+
+    let io = socketio.listen(server);
+
+    let myIo = io.of('/');
+
+    myIo.on('connection', (socket) => {
+
+        console.log("on connection-emitting verify user");
+
+        socket.emit('verifyUser', "");
+
+        socket.on('set-user', (authToken) => {
+            console.log('set-user called');
+
+            tokenLib.verifyClaimWithoutSecret(authToken, (err, user) => {
+                if (err) {
+                    socket.emit('auth-error', { status: 500, error: 'Please provide correct auth-Token' })
+                }
+                else {
+                    console.log("User is verified.Setting Details");
+                    let currentUser = user.data;
+
+                    socket.userId = currentUser.userId;
+                    let fullName = `${currentUser.firstName} ${currentUser.lastName}`
+                    let key = currentUser.userId;
+                    let value = fullName;
+
+                    
+                    let setUserOnline = redisLib.setANewOnlineUserInHash("onlineUsers", key, value, (err, result) => {
+                        if (err) {
+                            console.log(`some error occurred`)
+                        } else {
+                            // getting online users list.
+
+                            redisLib.getAllUsersInAHash('onlineUsers', (err, result) => {
+                                console.log(`--- inside getAllUsersInAHas function ---`)
+                                if (err) {
+                                    console.log(err)
+                                } else {
+
+                                    console.log(`${fullName} is online`);
+                                    // setting room name
+                                    socket.room = 'edChat'
+                                    // joining chat-group room.
+                                    socket.join(socket.room)
+                                    socket.to(socket.room).broadcast.emit('online-user-list', result);
+
+
+                                }
+                            })
+                        }
+                    })
+
+
+
+                    // let userObj = {
+                    //     userId: currentUser.userId, fullName: fullName
+                    // }
+
+                    // allOnlineUsers.push(userObj);
+                    // console.log(allOnlineUsers);
+
+                    // socket.room = 'jatinsRoom';
+
+                    // socket.join(socket.room);
+                    // socket.to(socket.room).broadcast.emit('online-user-list', allOnlineUsers);
+
+                }
+            })
+        })// end set-user
+
+        socket.on('disconnect', () => {
+            console.log('User is disconnected');
+            console.log(socket.userId);
+            // var removeIndex = allOnlineUsers.map(function (user) { return user.userId; }).indexOf(socket.userId);
+            // allOnlineUsers.splice(removeIndex, 1);
+            // console.log(allOnlineUsers);
+
+            // socket.to(socket.room).broadcast.emit('onilne-user-list', allOnlineUsers);
+            // socket.leave(socket.room);
+
+
+
+
+            if (socket.userId) {
+                redisLib.deleteUserFromHash('onlineUsers', socket.userId)
+                redisLib.getAllUsersInAHash('onlineUsers', (err, result) => {
+                    if (err) {
+                        console.log(err)
+                    } else {
+                        socket.leave(socket.room)
+                        socket.to(socket.room).broadcast.emit('online-user-list', result);
+
+
+                    }
+                })
+            }
+        })//end disconnect
+
+
+        socket.on('chat-msg', (data) => {
+            console.log('Socket chat-message called');
+            console.log(data);
+            
+
+            
+                eventEmitter.emit('save-chat', data);
+            
+
+            myIo.emit(data.receiverId, data);
+
+
+        })//end chat message
+
+        socket.on('typing', (fullName) => {
+            socket.to(socket.room).broadcast.emit('typing', fullName);
+        })//end typing
+
+
+
+        eventEmitter.on('save-chat', (data) => {
+
+            let newChat = new ChatModel({
+                chatId: shortid.generate(),
+                senderName: data.senderName,
+                senderId: data.senderId,
+                receiverName: data.receiverName || '',
+                receiverId: data.receiverId || '',
+                message: data.message,
+                chatRoom: data.chatRoom || '',
+                createdOn: data.createdOn
+            });
+
+            newChat.save((err,result)=>{
+                if(err){
+                    console.log(`error occurred: ${err}`);
+                    Console.log('Error is there . Be careful');
+        }
+        else if(result == undefined || result == null || result == ""){
+            console.log("Chat Is Not Saved.");
+        }
+        else {
+            console.log("Chat Saved.");
+            console.log(result);
+        }
+            })
+        })//end save chat
+
+    });
+
+
+}
+
+module.exports = {
+    setServer: setServer
+}
